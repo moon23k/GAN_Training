@@ -212,14 +212,3 @@ class DecoderLayer(nn.Module):
 		out = self.residual_conn[2](attn, self.pff)
 
 		return out, attn
-
-
-
-
-
-class Ranker(nn.Module):
-	def __init__(self):
-		super(Ranker, self)
-
-	def forward(self):
-		return 
