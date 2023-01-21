@@ -1,33 +1,18 @@
-# TransSum
+# NMT_PLMs
 
-This repo compares the performance of dealing with long texts for each of the four Transformer-based models.
-Each is Vanilla Transformer, Universal Transformer, Hierarchical Transformer, and Transformer XL.
-Except for Vanilla Transformer, the latter three models are designed to better handle long text data.
 
-Performance is compared based on the Abstractive Text Summarization Task.
 
 <br>
 <br>
 
-## Architecture desc
+## Pretrained Language Models for Neural Machine Translation
 
-### Vanilla Transformer
+**BART** <br>
 
-<br>
+****
 
-### Universal Transformer
+**T5** <br>
 
-
-<br>
-
-
-### Hierarchical Transformer
-
-
-<br>
-
-
-### Transformer XL
 
 <br>
 <br>
