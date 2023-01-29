@@ -1,34 +1,39 @@
-# NMT_PLMs
-
-
-
-<br>
-<br>
-
-## Pretrained Language Models for Neural Machine Translation
-
-**BART** <br>
-
-****
-
-**T5** <br>
+# NMT Integrated Generative Training
+This is an Experiment to make better Machine Translation by integrating two generative techniques. Each is Back Translation and SeqGAN. 
 
 
 <br>
 <br>
 
-## Training Setup
+## Model desc
+**Generator**
 
 <br>
+
+**Discriminator**
+
+<br><br>
+
+## Training Strategy
+**Pretrain**
+
 <br>
 
+**Generate Samples**
+
+<br>
+
+**Train**
+
+<br><br>
 
 ## How to run
 
-<br>
-<br>
+<br><br>
 
 
 ## Reference
+
+SeqGAN
 
 <br>
