@@ -42,10 +42,12 @@ class TrainerBase:
         g_encodings = self.tokenize(self.g_tokenizer, uttr)
 
         with torch.autocast(device_type=self.device_type, dtype=torch.float16):
-            pred = self.g_model.generate(input_ids=g_encodings.input_ids,
-                                         attention_mask=g_encodings.attention_mask, 
-                                         max_new_tokens=self.max_len, 
-                                         use_cache=True)
+            pred = self.g_model.generate(
+                input_ids=g_encodings.input_ids,
+                attention_mask=g_encodings.attention_mask, 
+                max_new_tokens=self.max_len, 
+                use_cache=True
+            )
 
         return self.g_tokenizer.batch_decode(pred, skip_special_tokens=True)
 
@@ -102,16 +104,15 @@ class TrainerBase:
 
 
 class Trainer(TrainerBase):
-    def __init__(self, config, g_model, d_model, g_tokenizer, 
-                 d_tokenizer, train_dataloader, valid_dataloader):
+    def __init__(self, config, g_model, d_model, 
+                 tokenizer, train_dataloader, valid_dataloader):
         
         super(Trainer, self).__init__(config)
 
         self.g_model = g_model
         self.d_model = d_model
 
-        self.g_tokenizer = g_tokenizer
-        self.d_tokenizer = d_tokenizer
+        self.tokenizer = tokenizer
 
         self.train_dataloader = train_dataloader
         self.valid_dataloader = valid_dataloader
@@ -127,7 +128,8 @@ class Trainer(TrainerBase):
 
         self.record_path = 'ckpt/train.json'
         self.record_keys = ['epoch', 'g_train_loss', 'd_train_loss', 
-                            'g_valid_loss', 'd_valid_loss', 'g_lr', 'd_lr', 'epoch_time']
+                            'g_valid_loss', 'd_valid_loss', 
+                            'g_lr', 'd_lr', 'epoch_time']
 
 
 

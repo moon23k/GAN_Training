@@ -1,39 +1,23 @@
 import os, torch
 import torch.nn as nn
-from collections import namedtuple
-from transformers import (BertConfig, BertModel,
-                          T5Config, T5ForConditionalGeneration)
+from transformers import (
+    T5Config, 
+    T5EncoderModel,
+    T5ForConditionalGeneration
+)
 
 
 
-class Discriminator(nn.Module):
-    def __init__(self, config, encoder):
-        super(Discriminator, self).__init__()
+def update_model_config(config, model_type):
+    if model_type == 'generator':
+        custom_config = {}
+    elif model_type == 'discriminator':
+        custom_config = {}
 
-        self.device = config.device
+    model_config = T5Config()
+    model_config.update(custom_config)
 
-        if config.mode == 'pretrain':
-            self.encoder = BertModel.from_pretrained(config.d_mname).to(self.device)
-        else:
-            bert_config = BertConfig.from_pretrained(config.d_mname)
-            self.encoder = BertModel(bert_config).to(self.device)
-
-        self.classifier = nn.Linear(self.encoder.config.hidden_size, 1)
-        self.dropout = nn.Dropout(self.encoder.config.hidden_dropout_prob)
-        
-        self.device = config.device
-        self.pad_id = self.encoder.config.pad_token_id
-        self.criterion = nn.BCEWithLogitsLoss().to(self.device)
-        self.outputs = namedtuple('Discriminator_Outputs', ('logit', 'loss'))
-
-        
-    def forward(self, input_ids, attention_mask, labels):
-        out = self.encoder(input_ids, attention_mask).last_hidden_state
-        out = self.classifier(out[:, 0])
-        out = self.dropout(out).squeeze()
-
-        loss = self.criterion(out, labels)
-        return self.outputs(out, loss)
+    return model_config
 
 
 
@@ -70,12 +54,9 @@ def load_generator(config):
     generator = T5ForConditionalGeneration(generator_config)
     print(f"Generator for {config.mode.upper()} has loaded")
 
-    if config.mode == 'train':
-        ckpt = config.g_base_ckpt
-    else:
-        ckpt = config.g_ckpt
-    
+    ckpt = config.g_ckpt
     assert os.path.exists(ckpt)
+
     generator_state = torch.torch.load(ckpt, map_location=config.device)['model_state_dict']
     generator.load_state_dict(generator_state)
 
@@ -96,11 +77,7 @@ def load_discriminator(config):
         print_model_desc(discriminator)
         return discriminator.to(config.device)
 
-    if config.mode == 'train':
-        ckpt = config.g_base_ckpt
-    else:
-        ckpt = config.g_ckpt
-    
+    ckpt = config.g_ckpt    
     assert os.path.exists(ckpt)
     
     model_state = torch.load(config.d_base_ckpt, map_location=config.device)['model_state_dict']        

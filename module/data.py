@@ -16,7 +16,6 @@ class Dataset(torch.utils.data.Dataset):
     def load_data(self, split=None):
         with open(f_name, 'r') as f:
             data = json.load(f)
-
         return data
 
 
@@ -40,8 +39,10 @@ class Dataset(torch.utils.data.Dataset):
 
 
 def load_dataloader(config, split=None):
-    return DataLoader(Dataset(config, split), 
-                      batch_size=config.batch_size, 
-                      shuffle=True if 'train' in config.mode else False,
-                      num_workers=2,
-                      pin_memory=True)
+    return DataLoader(
+        Dataset(config, split), 
+        batch_size=config.batch_size, 
+        shuffle=True if 'train' in config.mode else False,
+        num_workers=2,
+        pin_memory=True
+    )

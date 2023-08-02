@@ -3,17 +3,15 @@ import time, torch
 
 
 class Tester:
-    def __init__(self, config, g_model, d_model, 
-                 g_tokenizer, d_tokenizer, test_dataloader):
+    def __init__(self, config, g_model, d_model, tokenizer, test_dataloader):
+
+        self.device = config.device
+        self.max_len = config.max_len
 
         self.g_model = g_model
         self.d_model = d_model
         
-        self.g_tokenizer = g_tokenizer
-        self.d_tokenizer = d_tokenizer
-        
-        self.device = config.device
-        self.max_len = config.max_len
+        self.tokenizer = tokenizer
         self.dataloader = test_dataloader
 
 
@@ -26,10 +24,12 @@ class Tester:
 
 
     def tokenize(self, tokenizer, tokenizer_inputs):
-        return tokenizer(tokenizer_inputs, 
-                         padding=True, 
-                         truncation=True, 
-                         return_tensors='pt').to(self.device)
+        return tokenizer(
+            tokenizer_inputs, 
+            padding=True, 
+            truncation=True, 
+            return_tensors='pt'
+        ).to(self.device)
 
 
     def test(self):
@@ -43,20 +43,23 @@ class Tester:
                 uttr, resp = batch[0], batch[1]
 
                 #tokenize inputs for generator
-                g_uttr_encodings = self.tokenizer(self.g_tokenizer, uttr)
+                g_uttr_encodings = self.tokenizer(self.tokenizer, uttr)
                 g_ids = g_uttr_encodings.input_ids
                 g_masks = g_uttr_encodings.attention_mask
 
                 #generate predictions
-                preds = self.g_model.generate(input_ids=g_ids,
-                                              attention_mask=g_masks, 
-                                              max_new_tokens=self.max_len, 
-                                              use_cache=True)
+                preds = self.g_model.generate(
+                    input_ids=g_ids,
+                    attention_mask=g_masks, 
+                    max_new_tokens=self.max_len, 
+                    use_cache=True
+                )
+
                 #Decode generator predictions
                 preds = self.g_tokenizer.batch_decode(preds, skip_special_tokens=True)
 
                 #Tokenize inputs for discriminator
-                d_encodings = self.tokenize(self.d_tokenizer, preds)
+                d_encodings = self.tokenize(self.tokenizer, preds)
                 d_ids = d_encodings.input_ids
                 d_masks = d_encodings.attention_mask
                 logits = self.d_model(input_ids=d_ids, attention_mask=d_masks)
