@@ -1,15 +1,31 @@
 import os, yaml, argparse, torch
 
-from module.data import load_dataloader
-from module.model import load_generator, load_discriminator
-from module.pretrain import GenTrainer, DisTrainer
-from module.train import Trainer
-from module.test import Tester
+from tokenizers import Tokenizer
+from tokenizers.processors import TemplateProcessing
 
-from module.generate import generate
+from module import (
+    load_generator, 
+    load_discriminator
+    load_dataloader,
+    GenTrainer, 
+    DisTrainer, 
+    Tester
+)
 
-from transformers import set_seed, AutoTokenizer
 
+
+def set_seed(SEED=42):
+    import random
+    import numpy as np
+    import torch.backends.cudnn as cudnn
+
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    torch.cuda.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+    cudnn.benchmark = False
+    cudnn.deterministic = True
 
 
 
@@ -33,7 +49,7 @@ class Config(object):
 
         self.g_ckpt = 'ckpt/generator.pt'
         self.d_ckpt = 'ckpt/discriminator.pt'        
-        self.tokenizer_path = f'data/{self.task}/tokenizer.json'
+        self.tokenizer_path = 'data/tokenizer.json'
 
 
     def print_attr(self):
@@ -42,8 +58,17 @@ class Config(object):
 
 
 
-def load_tokenizer(config):    
-    return
+def load_tokenizer(config):
+    assert os.path.exists(config.tokenizer_path)
+
+    tokenizer = Tokenizer.from_file(config.tokenizer_path)    
+    tokenizer.post_processor = TemplateProcessing(
+        single=f"{config.bos_token} $A {config.eos_token}",
+        special_tokens=[(config.bos_token, config.bos_id), 
+                        (config.eos_token, config.eos_id)]
+        )
+    
+    return tokenizer
 
 
 
@@ -53,7 +78,10 @@ def pretrain(config, g_model, d_model, tokenizer):
     g_train_dataloader = load_dataloader(config, tokenizer, 'train')
     g_valid_dataloader = load_dataloader(config, tokenizer, 'valid')
 
-    g_trainer = GenTrainer(config, g_model, g_train_dataloader, g_valid_dataloader)
+    g_trainer = GenTrainer(
+        config, g_model, g_train_dataloader, g_valid_dataloader
+    )
+
     g_trainer.train()
 
 
@@ -66,7 +94,10 @@ def pretrain(config, g_model, d_model, tokenizer):
     d_train_dataloader = load_dataloader(config, tokenizer, 'train')
     d_valid_dataloader = load_dataloader(config, tokenizer, 'valid')        
 
-    d_trainer = DisTrainer(config, d_model, d_train_dataloader, d_valid_dataloader)
+    d_trainer = DisTrainer(
+        config, d_model, d_train_dataloader, d_valid_dataloader
+    )
+
     d_trainer.train()
 
 
@@ -76,15 +107,21 @@ def train(config, g_model, d_model, tokenizer):
     train_dataloader = load_dataloader(config, tokenizer, 'train')
     valid_dataloader = load_dataloader(config, tokenizer, 'valid')
 
-    trainer = Trainer(config, g_model, d_model, tokenizer, 
-                      train_dataloader, valid_dataloader)
+    trainer = Trainer(
+        config, g_model, d_model, tokenizer, 
+        train_dataloader, valid_dataloader
+    )
+
     trainer.train()
 
 
 
 def test(config, g_model, d_model, tokenizer):
     test_dataloader = load_dataloader(config, 'test')
-    tester = Tester(config, g_model, d_model, tokenizer, test_dataloader)    
+    tester = Tester(
+        config, g_model, d_model, tokenizer, test_dataloader
+    )
+        
     tester.test()    
 
 
@@ -134,16 +171,16 @@ def main(args):
 
 
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser()
     parser.add_argument('-mode', required=True)
+    parser.add_argument('-search', default='greedy', required=False)
 
     args = parser.parse_args()
     assert args.mode.lower() in ['pretrain', 'train', 'test', 'inference']
+    assert args.search in ['greedy', 'beam']
 
     if args.mode != 'pretrain':
         assert os.path.exists('ckpt/generator.pt')
         assert os.path.exists('ckpt/discriminator.pt')
-
 
     main(args)

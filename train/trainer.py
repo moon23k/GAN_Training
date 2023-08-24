@@ -104,8 +104,10 @@ class TrainerBase:
 
 
 class Trainer(TrainerBase):
-    def __init__(self, config, g_model, d_model, 
-                 tokenizer, train_dataloader, valid_dataloader):
+    def __init__(
+        self, config, g_model, d_model, 
+        tokenizer, train_dataloader, valid_dataloader
+    ):
         
         super(Trainer, self).__init__(config)
 

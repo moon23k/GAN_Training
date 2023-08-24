@@ -1,6 +1,10 @@
-import os, json, yaml
+import os, re, json, yaml
 from datasets import load_dataset
-
+from tokenizers.models import WordPiece
+from tokenizers import Tokenizer, normalizers
+from tokenizers.trainers import WordPieceTrainer
+from tokenizers.pre_tokenizers import Whitespace
+from tokenizers.normalizers import NFD, Lowercase, StripAccents
 
 
 
@@ -41,8 +45,28 @@ def process_data(orig_data, volumn=101100):
     return processed
 
 
+
+
 def train_tokenizer():
-    return
+    corpus_path = 'data/corpus.txt'
+    assert os.path.exists(corpus_path)
+    
+    assert os.path.exists('config.yaml')
+    with open('config.yaml', 'r') as f:
+        vocab_config = yaml.load(f, Loader=yaml.FullLoader)['vocab']
+
+    tokenizer = Tokenizer(WordPiece(unk_token=vocab_config['unk_token']))
+    tokenizer.normalizer = normalizers.Sequence([NFD(), Lowercase(), StripAccents()])
+    tokenizer.pre_tokenizer = Whitespace()
+    trainer = WordPieceTrainer(vocab_size=vocab_config['vocab_size'], 
+                               special_tokens=[vocab_config['pad_token'], 
+                                               vocab_config['unk_token'],
+                                               vocab_config['bos_token'],
+                                               vocab_config['eos_token']])
+
+    tokenizer.train(files=[corpus_path], trainer=trainer)
+    tokenizer.save("data/tokenizer.json")
+
 
 
 def save_data(data_obj):
@@ -63,10 +87,10 @@ def main():
     processed = process_data(orig_data)
 
     #Train Tokenizer
-    train_tokenizer()
+    train_tokenizer(task)
 
     #Save Data
-    save_data(processed)
+    save_data(task, processed)
 
 
 

@@ -1,10 +1,7 @@
 import os, torch
 import torch.nn as nn
-from transformers import (
-    T5Config, 
-    T5EncoderModel,
-    T5ForConditionalGeneration
-)
+from model import Discriminator, Generator
+
 
 
 
@@ -43,21 +40,20 @@ def print_model_desc(model):
 
 
 
-def load_generator(config):
-    if config.mode == 'pretrain':
-        generator = T5ForConditionalGeneration.from_pretrained(config.g_mname)
-        print(f"Generator for {config.mode.upper()} has loaded")
-        print_model_desc(generator)
-        return generator.to(config.device)
 
-    generator_config = T5Config.from_pretrained(config.g_mname)
-    generator = T5ForConditionalGeneration(generator_config)
+def load_generator(config):
+    generator = Generator(config)
+    init_weights(generator)
     print(f"Generator for {config.mode.upper()} has loaded")
 
+    
     ckpt = config.g_ckpt
     assert os.path.exists(ckpt)
+    
+    generator_state = torch.torch.load(
+        ckpt, map_location=config.device
+    )['model_state_dict']
 
-    generator_state = torch.torch.load(ckpt, map_location=config.device)['model_state_dict']
     generator.load_state_dict(generator_state)
 
     print(f"Model States has loaded from {ckpt}")

@@ -4,17 +4,15 @@ from torch.utils.data import DataLoader
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, config, split=None):
+    def __init__(self, config, tokenizer, split):
         super().__init__()
-
-        self.mode = config.mode
-        self.model_type = config.model_type
-
+        self.tokenizer = tokenizer
         self.data = self.load_data(split)
 
 
-    def load_data(self, split=None):
-        with open(f_name, 'r') as f:
+    @staticmethod
+    def load_data(split):
+        with open(f"data/{split}.json", 'r') as f:
             data = json.load(f)
         return data
 
@@ -24,25 +22,41 @@ class Dataset(torch.utils.data.Dataset):
 
     
     def __getitem__(self, idx):
-        if self.mode == 'pretrain' and self.model_type == 'discriminator':
-            uttr = self.data[idx]['src']
-            resp = self.data[idx]['trg']
-            pred = self.data[idx]['pred']
-            return uttr, resp, pred
+        return (
+            self.tokenizer.encode(self.data[idx]['src']).ids,
+            self.tokenizer.encode(self.data[idx]['trg']).ids
+        )
+
+
+
+class Collator(object):
+    def __init__(self, pad_id):
+        self.pad_id = pad_id
+
+    def __call__(self, batch):
+        src_batch, trg_batch = zip(*batch)
         
-        else:
-            uttr = self.data[idx]['src']
-            resp = self.data[idx]['trg']            
-            return uttr, resp
+        return {'src': self.pad_batch(src_batch), 
+                'trg': self.pad_batch(trg_batch)}
+
+
+    def pad_batch(self, batch):
+        return pad_sequence(
+            batch, 
+            batch_first=True, 
+            padding_value=self.pad_id
+        )
 
 
 
+def load_dataloader(config, tokenizer, split):
+    to_shuffle = True if split == 'train' else False
 
-def load_dataloader(config, split=None):
     return DataLoader(
-        Dataset(config, split), 
-        batch_size=config.batch_size, 
-        shuffle=True if 'train' in config.mode else False,
-        num_workers=2,
-        pin_memory=True
+        Dataset(tokenizer, split), 
+        batch_size=config.batch_size if to_shuffle else 1, 
+        shuffle=True if to_shuffle else False,
+        collate_fn=Collator(config.pad_id),
+        pin_memory=True,
+        num_workers=2
     )
