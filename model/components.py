@@ -1,7 +1,10 @@
-import math, torch
+import math, copy, torch
 import torch.nn as nn
 
 
+
+def clones(module, N):
+    return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
 
 class PositionalEncoding(nn.Module):
@@ -39,18 +42,6 @@ class Embeddings(nn.Module):
 
     def forward(self, x):
         return
-
-
-
-def generate_square_subsequent_mask(sz: int, device: str = "cpu") -> torch.Tensor:
-    """ Generate the attention mask for causal decoding """
-    mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
-    mask = (
-        mask.float()
-        .masked_fill(mask == 0, float("-inf"))
-        .masked_fill(mask == 1, float(0.0))
-    ).to(device=device)
-    return mask
 
 
 

@@ -5,19 +5,6 @@ from model import Discriminator, Generator
 
 
 
-def update_model_config(config, model_type):
-    if model_type == 'generator':
-        custom_config = {}
-    elif model_type == 'discriminator':
-        custom_config = {}
-
-    model_config = T5Config()
-    model_config.update(custom_config)
-
-    return model_config
-
-
-
 def print_model_desc(model):
     def count_params(model):
         params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -42,11 +29,16 @@ def print_model_desc(model):
 
 
 def load_generator(config):
+
     generator = Generator(config)
     init_weights(generator)
     print(f"Generator for {config.mode.upper()} has loaded")
 
+    if config.mode == 'train':
+        print_model_desc(generator)
+        return generator.to(config.device)
     
+
     ckpt = config.g_ckpt
     assert os.path.exists(ckpt)
     
@@ -76,9 +68,13 @@ def load_discriminator(config):
     ckpt = config.g_ckpt    
     assert os.path.exists(ckpt)
     
-    model_state = torch.load(config.d_base_ckpt, map_location=config.device)['model_state_dict']        
+    model_state = torch.load(
+        config.d_base_ckpt, 
+        map_location=config.device
+    )['model_state_dict']        
+    
     discriminator.load_state_dict(model_state)
     print(f"Model States has loaded from {ckpt}")        
     print_model_desc(discriminator)
 
-    return discriminator.to(config.device)
+    return discriminator.to(config.device)print_model_desc(generator)

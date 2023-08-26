@@ -126,29 +126,6 @@ def test(config, g_model, d_model, tokenizer):
 
 
 
-def inference(g_model, tokenizer):
-    g_model.eval()
-    print(f'--- Inference Process Started! ---')
-    print('[ Type "quit" on user input to stop the Process ]')
-    
-    while True:
-        input_seq = input('\nUser Input Sequence >> ').lower()
-
-        #End Condition
-        if input_seq == 'quit':
-            print('\n--- Inference Process has terminated! ---')
-            break        
-
-        #convert user input_seq into model input_ids
-        input_ids = tokenizer(input_seq, return_tensors='pt')['input_ids']
-        output_ids = g_model.generate(input_ids, max_new_tokens=128, use_cache=True)
-        output_seq = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0]
-
-        #Search Output Sequence
-        print(f"Model Out Sequence >> {output_seq}")
-
-
-
 def main(args):
     set_seed(42)
     config = Config(args)    
@@ -165,7 +142,10 @@ def main(args):
     elif config.mode == 'test':
         test(config, g_model, d_model, tokenizer)
     elif config.mode == 'inference':
-        inference(g_model, tokenizer)
+        '''
+        generator = Generator(config, model, tokenizer)
+        generator.inference()
+        '''
     
 
 
