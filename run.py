@@ -4,12 +4,16 @@ from tokenizers import Tokenizer
 from tokenizers.processors import TemplateProcessing
 
 from module import (
-    load_generator, 
-    load_discriminator
     load_dataloader,
-    GenTrainer, 
-    DisTrainer, 
+    load_generator, 
+    load_discriminator,
     Tester
+)
+
+from train import (
+    GenTrainer,
+    DisTrainer,
+    Trainer
 )
 
 
@@ -39,7 +43,6 @@ class Config(object):
                     setattr(self, key, val)
 
         self.mode = args.mode
-        self.search_method = args.search
 
         use_cuda = torch.cuda.is_available()
         self.device_type = 'cuda' \
@@ -72,80 +75,35 @@ def load_tokenizer(config):
 
 
 
-def pretrain(config, g_model, d_model, tokenizer):
-
-    ###PreTrain Generator with Character Dataset    
-    g_train_dataloader = load_dataloader(config, tokenizer, 'train')
-    g_valid_dataloader = load_dataloader(config, tokenizer, 'valid')
-
-    g_trainer = GenTrainer(
-        config, g_model, g_train_dataloader, g_valid_dataloader
-    )
-
-    g_trainer.train()
-
-
-    ###Generate Samples to PreTrain Discriminator
-    generate(config, g_model, tokenizer)
-    
-
-    ###PreTrain Discriminator
-    config.model_type = 'discriminator'
-    d_train_dataloader = load_dataloader(config, tokenizer, 'train')
-    d_valid_dataloader = load_dataloader(config, tokenizer, 'valid')        
-
-    d_trainer = DisTrainer(
-        config, d_model, d_train_dataloader, d_valid_dataloader
-    )
-
-    d_trainer.train()
-
-
-
-
-def train(config, g_model, d_model, tokenizer):
-    train_dataloader = load_dataloader(config, tokenizer, 'train')
-    valid_dataloader = load_dataloader(config, tokenizer, 'valid')
-
-    trainer = Trainer(
-        config, g_model, d_model, tokenizer, 
-        train_dataloader, valid_dataloader
-    )
-
-    trainer.train()
-
-
-
-def test(config, g_model, d_model, tokenizer):
-    test_dataloader = load_dataloader(config, 'test')
-    tester = Tester(
-        config, g_model, d_model, tokenizer, test_dataloader
-    )
-        
-    tester.test()    
-
-
-
 def main(args):
     set_seed(42)
     config = Config(args)    
     tokenizer = load_tokenizer(config)
 
-    g_model = load_generator(config)
-    d_model = load_discriminator(config)
+
+    if 'train' in config.mode:
+        g_model = load_generator(config)
+        d_model = load_discriminator(config)
+        train_dataloader = load_dataloader(config, tokenizer, 'train')
+        valid_dataloader = load_dataloader(config, tokenizer, 'valid')
+    
+    elif config.mode == 'test':
+        g_model = load_generator(config)
+        test_dataloader = load_dataloader(config, tokenizer, 'test')
+
 
 
     if config.mode == 'pretrain':
-        pretrain(config, g_model, d_model, tokenizer)
+        GenTrainer(config, g_model, train_dataloader, valid_dataloader).train()
+        DisTrainer(config, d_model, train_dataloader, valid_dataloader).train()
+        
     elif config.mode == 'train':
-        train(config, g_model, d_model, tokenizer)
+        trainer = Trainer(config, g_model, d_model, tokenizer, train_dataloader, valid_dataloader)
+        trainer.train()
+
     elif config.mode == 'test':
-        test(config, g_model, d_model, tokenizer)
-    elif config.mode == 'inference':
-        '''
-        generator = Generator(config, model, tokenizer)
-        generator.inference()
-        '''
+        tester = Tester(config, g_model, tokenizer, test_dataloader)
+        tester.test()
     
 
 
@@ -153,11 +111,9 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-mode', required=True)
-    parser.add_argument('-search', default='greedy', required=False)
 
     args = parser.parse_args()
-    assert args.mode.lower() in ['pretrain', 'train', 'test', 'inference']
-    assert args.search in ['greedy', 'beam']
+    assert args.mode.lower() in ['pretrain', 'train', 'test']
 
     if args.mode != 'pretrain':
         assert os.path.exists('ckpt/generator.pt')

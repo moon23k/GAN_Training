@@ -1,3 +1,3 @@
-from .generate import generate
-from .train import Trainer
-from .pretrain import PreTrainer
+from .gen_trainer import GenTrainer
+from .dis_trainer import DisTrainer
+from .trainer import Trainer

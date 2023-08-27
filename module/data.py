@@ -1,5 +1,6 @@
 import json, torch
 from torch.utils.data import DataLoader
+from torch.nn.utils.rnn import pad_sequence
 
 
 
@@ -51,7 +52,8 @@ class Collator(object):
 
 def load_dataloader(config, tokenizer, split):
     is_train = (split == 'train')
-    batch_size = config.batch_size if is_train
+    batch_size = config.batch_size if is_train\
+                 else config.batch_size // 4
 
     return DataLoader(
         Dataset(tokenizer, split), 

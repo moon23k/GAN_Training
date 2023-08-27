@@ -3,6 +3,11 @@ import torch.nn as nn
 from model import Discriminator, Generator
 
 
+def init_weights(model):
+    for name, param in model.named_parameters():
+        if 'weight' in name and 'norm' not in name:
+            nn.init.xavier_uniform_(param)            
+
 
 
 def print_model_desc(model):
@@ -34,7 +39,7 @@ def load_generator(config):
     init_weights(generator)
     print(f"Generator for {config.mode.upper()} has loaded")
 
-    if config.mode == 'train':
+    if config.mode == 'pretrain':
         print_model_desc(generator)
         return generator.to(config.device)
     
@@ -77,4 +82,4 @@ def load_discriminator(config):
     print(f"Model States has loaded from {ckpt}")        
     print_model_desc(discriminator)
 
-    return discriminator.to(config.device)print_model_desc(generator)
+    return discriminator.to(config.device)

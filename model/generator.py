@@ -9,12 +9,12 @@ from .components import Embeddings, Encoder
 class DecoderLayer(nn.TransformerDecoderLayer):
     def forward(
         self,
-        tgt: Tensor,
-        memory: Optional[Tensor] = None,
-        memory_mask: Optional[Tensor] = None,
-        tgt_key_padding_mask: Optional[Tensor] = None,
-        memory_key_padding_mask: Optional[Tensor] = None,
-    ) -> Tensor:
+        tgt,
+        memory=None,
+        memory_mask=None,
+        tgt_key_padding_mask=None,
+        memory_key_padding_mask=None,
+    ):
         """
         Args:
             see CausalTransformerDecoder
@@ -37,28 +37,28 @@ class DecoderLayer(nn.TransformerDecoderLayer):
         # This part is adapted from the official Pytorch implementation
         # So that only the last token gets modified and returned.
 
-        tgt_last_tok = tgt[-1:, :, :]
+        tgt_last_tok = tgt[:, -1:, :]
+
 
         # self attention part
         tmp_tgt = self.self_attn(
-            tgt_last_tok,
-            tgt,
-            tgt,
+            tgt_last_tok, tgt, tgt,
             attn_mask=None,  # not needed because we only care about the last token
             key_padding_mask=tgt_key_padding_mask,
         )[0]
+
         tgt_last_tok = tgt_last_tok + self.dropout1(tmp_tgt)
         tgt_last_tok = self.norm1(tgt_last_tok)
+
 
         # encoder-decoder attention
         if memory is not None:
             tmp_tgt = self.multihead_attn(
-                tgt_last_tok,
-                memory,
-                memory,
+                tgt_last_tok, memory, memory,
                 attn_mask=memory_mask,
                 key_padding_mask=memory_key_padding_mask,
             )[0]
+
             tgt_last_tok = tgt_last_tok + self.dropout2(tmp_tgt)
             tgt_last_tok = self.norm2(tgt_last_tok)
 
@@ -68,6 +68,7 @@ class DecoderLayer(nn.TransformerDecoderLayer):
         )
         tgt_last_tok = tgt_last_tok + self.dropout3(tmp_tgt)
         tgt_last_tok = self.norm3(tgt_last_tok)
+        
         return tgt_last_tok
 
 
@@ -76,21 +77,21 @@ class Decoder(nn.TransformerDecoder):
 
     def forward(
         self,
-        tgt: Tensor,
-        memory: Optional[Tensor] = None,
-        cache: Optional[Tensor] = None,
-        memory_mask: Optional[Tensor] = None,
-        tgt_key_padding_mask: Optional[Tensor] = None,
-        memory_key_padding_mask: Optional[Tensor] = None,
-    ) -> Tensor:
+        tgt,
+        memory=None,
+        cache=None,
+        memory_mask=None,
+        tgt_key_padding_mask=None,
+        memory_key_padding_mask=None,
+        use_cache=True
+    ):
 
         output = tgt
 
-        if self.training:
-            if cache is not None:
-                raise ValueError("cache parameter should be None in training mode")
-            for mod in self.layers:
-                output = mod(
+        #cache를 사용하지 않는 경우
+        if not use_cache:
+            for layer in self.layers:
+                output = layer(
                     output,
                     memory,
                     memory_mask=memory_mask,
@@ -100,17 +101,19 @@ class Decoder(nn.TransformerDecoder):
 
             return output
 
+        #cache를 사용하는 경우
         new_token_cache = []
-        for i, mod in enumerate(self.layers):
-            output = mod(output, memory)
+        for idx, layer in enumerate(self.layers):
+            output = layer(output, memory) #이때는 마스크를 아예 제공하지 않네;
             new_token_cache.append(output)
             if cache is not None:
-                output = torch.cat([cache[i], output], dim=0)
+                output = torch.cat([cache[idx], output], dim=0)
 
-        if cache is not None:
-            new_cache = torch.cat([cache, torch.stack(new_token_cache, dim=0)], dim=1)
-        else:
+        if cache is None:
             new_cache = torch.stack(new_token_cache, dim=0)
+        else:
+            new_cache = torch.cat([cache, torch.stack(new_token_cache, dim=0)], dim=1)
+
 
         return output, new_cache
 
@@ -133,7 +136,8 @@ class Generator(nn.Module):
             DecoderLayer(
                 d_model=config.hidden_dim, 
                 nhead=config.n_heads, 
-                dim_feedforward=config.pff_dim
+                dim_feedforward=config.pff_dim,
+                batch_first=True
             ),
             num_layers=config.n_layers,
         )
@@ -145,7 +149,12 @@ class Generator(nn.Module):
         self.criterion = nn.CrossEntropyLoss(
             ignore_index=self.pad_id, 
             label_smoothing=0.1
-        ).to(self.device)
+        )
+
+
+    @staticmethod
+    def shift_y(y):
+        return y[:, :-1], y[:, 1:]
 
 
     def pad_mask(self, x):
@@ -153,7 +162,8 @@ class Generator(nn.Module):
 
 
     def dec_mask(self, x):
-        return mask
+        sz = x.size(1)
+        return torch.triu(torch.full((sz, sz), float('-inf')), diagonal=1).to(self.device)
 
 
     def encode(self, x, x_mask):
@@ -174,13 +184,13 @@ class Generator(nn.Module):
 
         memory = self.encoder(x, e_mask)
 
-        dec_out = self.decode(y, memory, e_mask, d_mask)
+        dec_out = self.decode(y, memory, e_mask, d_mask, use_cache=False)
         logit = self.generator(dec_out)
 
         return self.out
 
 
-    def generate(self, x, y=None, use_cache=True):
+    def generate(self, x, y=None):
 
         batch_size = x.size(0)
         max_len = self.max_len if y is None else y.size(1)
@@ -190,14 +200,9 @@ class Generator(nn.Module):
 
         memory = self.encode(x, self.x_mask(x))
 
-        if use_cache:
-            pass
-
-        for t in range(1, max_len):
+        for idx in range(1, max_len):
             y = pred[:, :idx]
-            d_mask = self.dec_mask(y)
-            d_out = self.decode(y, memory, e_mask, d_mask)
-
+            d_out = self.decode(y, memory, use_cache=True)
             logit = self.generator(d_out)
             pred_token = logit.argmax(dim=-1)[:, -1]
             pred[:, idx] = pred_token

@@ -1,4 +1,4 @@
-import os, re, json, yaml
+import os, yaml, json
 from datasets import load_dataset
 from tokenizers.models import WordPiece
 from tokenizers import Tokenizer, normalizers
@@ -95,4 +95,4 @@ def main():
 
 
 if __name__ == '__main__':
-        main()    
+    main()    

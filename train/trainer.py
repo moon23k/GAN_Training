@@ -2,7 +2,8 @@ import time, json, torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.amp as amp
-import torch.optim as optim
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import ReduceLROnPlateau 
 
 
 
@@ -30,71 +31,8 @@ class TrainerBase:
         return f"{elapsed_min}m {elapsed_sec}s"
 
 
-
-    def tokenize(self, tokenizer, tokenizer_inputs):
-        return tokenizer(tokenizer_inputs, 
-                         padding=True, 
-                         truncation=True, 
-                         return_tensors='pt').to(self.device)
-
-
-    def generate(self, uttr):        
-        g_encodings = self.tokenize(self.g_tokenizer, uttr)
-
-        with torch.autocast(device_type=self.device_type, dtype=torch.float16):
-            pred = self.g_model.generate(
-                input_ids=g_encodings.input_ids,
-                attention_mask=g_encodings.attention_mask, 
-                max_new_tokens=self.max_len, 
-                use_cache=True
-            )
-
-        return self.g_tokenizer.batch_decode(pred, skip_special_tokens=True)
-
-
-    def collate_dis_inputs(self, uttr, resp, pred):
-        if isinstance(self, Trainer):
-            tokenizer = self.d_tokenizer
-        else:
-            tokenizer = self.tokenizer
-
-        pos_encodings = self.tokenize(tokenizer, uttr + resp)
-        neg_encodings = self.tokenize(tokenizer, uttr + pred)
-
-        pos_ids, pos_mask = pos_encodings.input_ids, pos_encodings.attention_mask
-        neg_ids, neg_mask = neg_encodings.input_ids, neg_encodings.attention_mask
-
-        batch_size, pos_len = pos_ids.shape
-        neg_len = neg_ids.size(1)
-        pad_len = neg_len - pos_len
-
-        #Padding
-        if pad_len > 0:
-            pad_tensor = torch.zeros((batch_size, pad_len), dtype=torch.long).to(self.device)
-            pos_ids = torch.cat((pos_ids, pad_tensor), dim=1)
-            pos_mask = torch.cat((pos_mask, pad_tensor), dim=1)
-
-        else:
-            pad_tensor = torch.zeros((batch_size, -pad_len), dtype=torch.long).to(self.device)
-            neg_ids = torch.cat((neg_ids, pad_tensor), dim=1)
-            neg_mask = torch.cat((neg_mask, pad_tensor), dim=1)
-
-
-        ids = torch.cat((pos_ids, neg_ids), dim=0).to(self.device)
-        masks = torch.cat((pos_mask, neg_mask), dim=0).to(self.device)
-
-        labels = torch.cat((torch.zeros(batch_size), torch.ones(batch_size)), dim=0)
-        indice = torch.randperm(batch_size * 2).long()
-
-        #Shuffle Discriminator inputs
-        ids = ids[indice].to(self.device)
-        masks = masks[indice].to(self.device)
-        labels = labels[indice].to(self.device)
-
-        return ids, masks, labels
-
-
-    def save_ckpt(self, epoch, ckpt, model, optimizer):
+    @staticmethod
+    def save_ckpt(epoch, ckpt, model, optimizer):
         torch.save({'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict()},
@@ -106,7 +44,7 @@ class TrainerBase:
 class Trainer(TrainerBase):
     def __init__(
         self, config, g_model, d_model, 
-        tokenizer, train_dataloader, valid_dataloader
+        train_dataloader, valid_dataloader
     ):
         
         super(Trainer, self).__init__(config)
@@ -114,16 +52,14 @@ class Trainer(TrainerBase):
         self.g_model = g_model
         self.d_model = d_model
 
-        self.tokenizer = tokenizer
-
         self.train_dataloader = train_dataloader
         self.valid_dataloader = valid_dataloader
         
-        self.g_optimizer = optim.AdamW(params=self.g_model.parameters(), lr=config.lr)
-        self.d_optimizer = optim.AdamW(params=self.d_model.parameters(), lr=config.lr)
+        self.g_optimizer = AdamW(params=self.g_model.parameters(), lr=config.lr)
+        self.d_optimizer = AdamW(params=self.d_model.parameters(), lr=config.lr)
 
-        self.g_scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.g_optimizer, 'min')
-        self.d_scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.d_optimizer, 'min')
+        self.g_scheduler = ReduceLROnPlateau(self.g_optimizer, 'min')
+        self.d_scheduler = ReduceLROnPlateau(self.d_optimizer, 'min')
 
         self.g_ckpt = config.g_ckpt
         self.d_ckpt = config.d_ckpt
@@ -145,42 +81,6 @@ class Trainer(TrainerBase):
         print(f"""  >> Discriminator Train Loss: {record_dict['d_train_loss']:.3f} | \
               Discriminator Valid Loss: {record_dict['d_valid_loss']:.3f}\n""".replace(' ' * 14, ''))
 
-
-
-    def discriminate(self, uttr, resp=None, pred=None):
-        if resp is None:
-            encodings = self.tokenize(self.d_tokenizer, uttr + pred)
-            ids = encodings.input_ids
-            masks = encodings.attention_mask
-            labels = torch.zeros(ids.size(0)).to(self.device)
-        else:
-            ids, masks, labels = self.collate_dis_inputs(uttr, resp, pred)
-
-        with torch.autocast(device_type=self.device_type, dtype=torch.float16):
-            outs = self.d_model(input_ids=ids, attention_mask=masks, labels=labels)        
-
-        return outs
-
-
-    def get_losses(self, batch):
-        uttr, resp = batch[0], batch[1]
-        batch_size = len(uttr)
-        pred = self.generate(uttr)
-
-        #Get Generator Loss
-        g_logit = self.discriminate(uttr, None, pred).logit
-        g_logit = F.softmax(g_logit, dim=-1)
-        g_logit = g_logit[g_logit > 0.5].sum().item() / batch_size
-        
-        if not g_logit:
-            g_logit = 1e-4
-
-        g_loss = -torch.log(torch.tensor(g_logit, requires_grad=True)).to(self.device)
-
-        #Get Discriminator Loss
-        d_loss = self.discriminate(uttr, resp, pred).loss
-
-        return g_loss, d_loss
 
 
 
