@@ -20,7 +20,7 @@ class TrainerBase:
         self.iters_to_accumulate = config.iters_to_accumulate
 
         self.early_stop = config.early_stop
-        self.patience = config.patience
+        self.patience = config.patience        
 
 
     @staticmethod

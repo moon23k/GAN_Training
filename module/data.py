@@ -5,7 +5,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, config, tokenizer, split):
+    def __init__(self, tokenizer, split):
         super().__init__()
         self.tokenizer = tokenizer
         self.data = self.load_data(split)

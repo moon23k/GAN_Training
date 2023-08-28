@@ -7,11 +7,13 @@ from module import (
     load_dataloader,
     load_generator, 
     load_discriminator,
-    Tester
+    Tester,
+    Translator
 )
 
 from train import (
     GenTrainer,
+    Sampler,
     DisTrainer,
     Trainer
 )
@@ -61,6 +63,7 @@ class Config(object):
 
 
 
+
 def load_tokenizer(config):
     assert os.path.exists(config.tokenizer_path)
 
@@ -75,45 +78,59 @@ def load_tokenizer(config):
 
 
 
+
 def main(args):
     set_seed(42)
     config = Config(args)    
+    generator = load_generator(config)
     tokenizer = load_tokenizer(config)
 
 
     if 'train' in config.mode:
-        g_model = load_generator(config)
-        d_model = load_discriminator(config)
-        train_dataloader = load_dataloader(config, tokenizer, 'train')
-        valid_dataloader = load_dataloader(config, tokenizer, 'valid')
-    
-    elif config.mode == 'test':
-        g_model = load_generator(config)
-        test_dataloader = load_dataloader(config, tokenizer, 'test')
+        #Common Setups for Pretraining and Training Processes
+        train_dataloader = load_dataloader(config, 'train')
+        valid_dataloader = load_dataloader(config, 'valid')        
+        discriminator = load_discriminator(config)
 
+        #PreTraining Process
+        if config.mode == 'pretrain':
+            #Pretrain Generator
+            gen_trainer = GenTrainer(config, generator, train_dataloader, valid_dataloader)
+            gen_trainer.train()
 
+            #Generate Samples to pretrain Discriminator
+            sampler = Sampler(config, tokenizer, train_dataloader, valid_dataloader)
+            sampler.generate_samples()
 
-    if config.mode == 'pretrain':
-        GenTrainer(config, g_model, train_dataloader, valid_dataloader).train()
-        DisTrainer(config, d_model, train_dataloader, valid_dataloader).train()
-        
-    elif config.mode == 'train':
-        trainer = Trainer(config, g_model, d_model, tokenizer, train_dataloader, valid_dataloader)
-        trainer.train()
+            dis_trainer = DisTrainer(config, discriminator, train_dataloader, valid_dataloader)
+            dis_trainer.train()
 
-    elif config.mode == 'test':
-        tester = Tester(config, g_model, tokenizer, test_dataloader)
+        #Training Process
+        elif config.mode == 'train':
+            trainer = Trainer(config, generator, discriminator, train_dataloader, valid_dataloader)
+            trainer.train()
+
+    if config.mode == 'test':
+        test_dataloader = load_dataloader(config, 'test')
+        tester = Tester(config, generator, tokenizer, test_dataloader)
         tester.test()
-    
+
+
+    if config.mode == 'inference':
+        translator = Translator(config, model, tokenizer)
+        translator.translate()
+
 
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-mode', required=True)
+    parser.add_argument('-search', default='greedy', required=False)
 
     args = parser.parse_args()
-    assert args.mode.lower() in ['pretrain', 'train', 'test']
+    assert args.mode.lower() in ['pretrain', 'train', 'test', 'inference']
+    assert args.search.lower() in ['greedy', 'beam']
 
     if args.mode != 'pretrain':
         assert os.path.exists('ckpt/generator.pt')

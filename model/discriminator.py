@@ -14,7 +14,7 @@ class Discriminator(nn.Module):
 
         self.enc_emb = Embeddings(config)
         self.encoder = Encoder(config)
-        self.classifier = nn.Linear(config.hidden_size, 1)
+        self.classifier = nn.Linear(config.hidden_dim, 1)
 
         self.out = namedtuple('Out', 'logit loss')
         self.criterion = nn.CrossEntropyLoss()
