@@ -11,27 +11,17 @@ class DecoderLayer(nn.TransformerDecoderLayer):
         self,
         tgt,
         memory=None,
-        memory_mask=None,
-        tgt_key_padding_mask=None,
-        memory_key_padding_mask=None,
+        e_mask=None,
+        d_mask=None,
+        use_cache=False
     ):
-        """
-        Args:
-            see CausalTransformerDecoder
-        Returns:
-            Tensor:
-                If training: embedding of the whole layer: seq_len x bsz x hidden_dim
-                If eval mode: embedding of last token: 1 x bsz x hidden_dim
-        """
 
-        if self.training:
+        if not use_cache:
             return super().forward(
                 tgt,
                 memory,
-                tgt_mask=generate_square_subsequent_mask(tgt.size(0), tgt.device),
-                memory_mask=memory_mask,
-                tgt_key_padding_mask=tgt_key_padding_mask,
-                memory_key_padding_mask=memory_key_padding_mask,
+                memory_key_padding_mask=e_mask,
+                tgt_mask=d_mask
             )
 
         # This part is adapted from the official Pytorch implementation
@@ -44,7 +34,7 @@ class DecoderLayer(nn.TransformerDecoderLayer):
         tmp_tgt = self.self_attn(
             tgt_last_tok, tgt, tgt,
             attn_mask=None,  # not needed because we only care about the last token
-            key_padding_mask=tgt_key_padding_mask,
+            key_padding_mask=d_mask,
         )[0]
 
         tgt_last_tok = tgt_last_tok + self.dropout1(tmp_tgt)
@@ -55,8 +45,8 @@ class DecoderLayer(nn.TransformerDecoderLayer):
         if memory is not None:
             tmp_tgt = self.multihead_attn(
                 tgt_last_tok, memory, memory,
-                attn_mask=memory_mask,
-                key_padding_mask=memory_key_padding_mask,
+                attn_mask=d_mask,
+                key_padding_mask=e_mask,
             )[0]
 
             tgt_last_tok = tgt_last_tok + self.dropout2(tmp_tgt)
@@ -77,42 +67,38 @@ class Decoder(nn.TransformerDecoder):
 
     def forward(
         self,
-        tgt,
+        x,
         memory=None,
         cache=None,
-        memory_mask=None,
-        tgt_key_padding_mask=None,
-        memory_key_padding_mask=None,
+        e_mask=None,
+        d_mask=None,
         use_cache=True
     ):
 
-        output = tgt
+        output = x
 
-        #cache를 사용하지 않는 경우
+        #In case of not using Cache
         if not use_cache:
             for layer in self.layers:
-                output = layer(
-                    output,
-                    memory,
-                    memory_mask=memory_mask,
-                    tgt_key_padding_mask=tgt_key_padding_mask,
-                    memory_key_padding_mask=memory_key_padding_mask,
-                )
+                output = layer(output, memory, e_mask, d_mask, False)
 
             return output
 
-        #cache를 사용하는 경우
+        #In case of using Cache
         new_token_cache = []
         for idx, layer in enumerate(self.layers):
-            output = layer(output, memory) #이때는 마스크를 아예 제공하지 않네;
+            output = layer(output, memory)
             new_token_cache.append(output)
             if cache is not None:
-                output = torch.cat([cache[idx], output], dim=0)
+                output = torch.cat([cache[:, idx], output], dim=1)
 
         if cache is None:
-            new_cache = torch.stack(new_token_cache, dim=0)
+            new_cache = torch.stack(new_token_cache, dim=1)
         else:
-            new_cache = torch.cat([cache, torch.stack(new_token_cache, dim=0)], dim=1)
+            new_cache = torch.cat(
+                [cache, torch.stack(new_token_cache, dim=1)], 
+                dim=0
+            )
 
 
         return output, new_cache
@@ -125,7 +111,9 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
 
         self.device = config.device
+        self.bos_id = config.bos_id
         self.pad_id = config.pad_id
+        self.max_len = config.max_len
         self.vocab_size = config.vocab_size
 
         self.enc_emb = Embeddings(config)
@@ -143,7 +131,6 @@ class Generator(nn.Module):
         )
 
         self.generator = nn.Linear(config.hidden_dim, self.vocab_size)
-
 
         self.out = namedtuple('Out', 'logit loss')
         self.criterion = nn.CrossEntropyLoss(
@@ -172,20 +159,28 @@ class Generator(nn.Module):
         return x
 
 
-    def decode(self, x, memory, e_mask, d_mask):
+    def decode(self, x, memory, cache=None, e_mask=None, d_mask=None, use_cache=False):
         x = self.dec_emb(x)
-        x = self.decoder(x, memory, e_mask, d_mask)
+        x = self.decoder(x, memory, cache, e_mask, d_mask, use_cache)
         return x
 
 
     def forward(self, x, y):
+        y, label = self.shift_y(y)
+        
         e_mask = self.pad_mask(x)
         d_mask = self.dec_mask(y)
 
-        memory = self.encoder(x, e_mask)
+        memory = self.encode(x, e_mask)
 
-        dec_out = self.decode(y, memory, e_mask, d_mask, use_cache=False)
+        dec_out = self.decode(y, memory, None, e_mask, d_mask, use_cache=False)
         logit = self.generator(dec_out)
+
+        self.out.logit = logit
+        self.out.loss = self.criterion(
+            logit.contiguous().view(-1, self.vocab_size), 
+            label.contiguous().view(-1)
+        )
 
         return self.out
 
@@ -195,14 +190,17 @@ class Generator(nn.Module):
         batch_size = x.size(0)
         max_len = self.max_len if y is None else y.size(1)
 
-        pred = torch.zeros((batch_size, max_len), dtype=torch.long).to(self.device)
+        pred = torch.zeros((batch_size, max_len), dtype=torch.long)
+        pred = pred.fill_(self.pad_id).to(self.device)
         pred[:, 0] = self.bos_id
 
-        memory = self.encode(x, self.x_mask(x))
+        cache=None
+        e_mask = self.pad_mask(x)
+        memory = self.encode(x, e_mask)
 
         for idx in range(1, max_len):
             y = pred[:, :idx]
-            d_out = self.decode(y, memory, use_cache=True)
+            d_out, cache = self.decode(y, memory, cache, e_mask, use_cache=True)
             logit = self.generator(d_out)
             pred_token = logit.argmax(dim=-1)[:, -1]
             pred[:, idx] = pred_token

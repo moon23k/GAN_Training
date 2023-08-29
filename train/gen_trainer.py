@@ -1,4 +1,5 @@
-import torch
+import time, math, json, torch
+import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from .trainer import TrainerBase
@@ -16,10 +17,22 @@ class GenTrainer(TrainerBase):
         self.optimizer = AdamW(self.model.parameters(), lr=config.lr)
         self.scheduler = ReduceLROnPlateau(self.optimizer, 'min')
 
-        self.ckpt = None
+        self.ckpt = config.g_ckpt
+        self.record_path = self.ckpt.replace('.pt', '.json')
         self.record_keys = ['epoch', 'train_loss', 'train_ppl',
                             'valid_loss', 'valid_ppl', 
                             'learning_rate', 'train_time']
+
+
+    def print_epoch(self, record_dict):
+        print(f"""Epoch {record_dict['epoch']}/{self.n_epochs} | \
+              Time: {record_dict['train_time']}""".replace(' ' * 14, ''))
+        
+        print(f"""  >> Train Loss: {record_dict['train_loss']:.3f} | \
+              Train PPL: {record_dict['train_ppl']:.2f}""".replace(' ' * 14, ''))
+
+        print(f"""  >> Valid Loss: {record_dict['valid_loss']:.3f} | \
+              Valid PPL: {record_dict['valid_ppl']:.2f}\n""".replace(' ' * 14, ''))
                             
 
     def train(self):
