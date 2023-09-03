@@ -9,7 +9,7 @@ from .components import Embeddings, Encoder
 class DecoderLayer(nn.TransformerDecoderLayer):
     def forward(
         self,
-        tgt,
+        x,
         memory=None,
         e_mask=None,
         d_mask=None,
@@ -18,48 +18,38 @@ class DecoderLayer(nn.TransformerDecoderLayer):
 
         if not use_cache:
             return super().forward(
-                tgt,
+                x,
                 memory,
                 memory_key_padding_mask=e_mask,
                 tgt_mask=d_mask
             )
 
-        # This part is adapted from the official Pytorch implementation
-        # So that only the last token gets modified and returned.
 
-        tgt_last_tok = tgt[:, -1:, :]
-
+        last_token = x[:, -1:, :]
 
         # self attention part
-        tmp_tgt = self.self_attn(
-            tgt_last_tok, tgt, tgt,
-            attn_mask=None,  # not needed because we only care about the last token
-            key_padding_mask=d_mask,
-        )[0]
+        _x = self.self_attn(last_token, x, x)[0]
 
-        tgt_last_tok = tgt_last_tok + self.dropout1(tmp_tgt)
-        tgt_last_tok = self.norm1(tgt_last_tok)
+        last_token = last_token + self.dropout1(_x)
+        last_token = self.norm1(last_token)
 
 
         # encoder-decoder attention
-        if memory is not None:
-            tmp_tgt = self.multihead_attn(
-                tgt_last_tok, memory, memory,
-                attn_mask=d_mask,
-                key_padding_mask=e_mask,
-            )[0]
+        _x = self.multihead_attn(
+            last_token, memory, memory,
+            key_padding_mask=e_mask,
+        )[0]
 
-            tgt_last_tok = tgt_last_tok + self.dropout2(tmp_tgt)
-            tgt_last_tok = self.norm2(tgt_last_tok)
+        last_token = last_token + self.dropout2(_x)
+        last_token = self.norm2(last_token)
 
         # final feed-forward network
-        tmp_tgt = self.linear2(
-            self.dropout(self.activation(self.linear1(tgt_last_tok)))
-        )
-        tgt_last_tok = tgt_last_tok + self.dropout3(tmp_tgt)
-        tgt_last_tok = self.norm3(tgt_last_tok)
+        _x = self.activation(self.linear1(last_token))
+        _x = self.linear2(self.dropout(_x))
+        last_token = last_token + self.dropout3(_x)
+        last_token = self.norm3(last_token)
         
-        return tgt_last_tok
+        return last_token
 
 
 
@@ -81,25 +71,21 @@ class Decoder(nn.TransformerDecoder):
         if not use_cache:
             for layer in self.layers:
                 output = layer(output, memory, e_mask, d_mask, False)
-
-            return output
+            return output, None
 
         #In case of using Cache
         new_token_cache = []
         for idx, layer in enumerate(self.layers):
-            output = layer(output, memory)
+            output = layer(output, memory, use_cache=True)
             new_token_cache.append(output)
-            if cache is not None:
-                output = torch.cat([cache[:, idx], output], dim=1)
+            
+            if cache is not None:  
+                output = torch.cat([cache[idx], output], dim=1)
 
-        if cache is None:
-            new_cache = torch.stack(new_token_cache, dim=1)
-        else:
-            new_cache = torch.cat(
-                [cache, torch.stack(new_token_cache, dim=1)], 
-                dim=0
-            )
+        new_cache = torch.stack(new_token_cache, dim=0)
 
+        if cache is not None:
+            new_cache = torch.cat([cache, new_cache], dim=2)
 
         return output, new_cache
 
@@ -159,10 +145,15 @@ class Generator(nn.Module):
         return x
 
 
-    def decode(self, x, memory, cache=None, e_mask=None, d_mask=None, use_cache=False):
+    def decode(
+        self, x, memory, cache=None, 
+        e_mask=None, d_mask=None, use_cache=False
+        ):
+        
         x = self.dec_emb(x)
-        x = self.decoder(x, memory, cache, e_mask, d_mask, use_cache)
-        return x
+        x, cache = self.decoder(x, memory, cache, e_mask, d_mask, use_cache)
+        return x, cache        
+        
 
 
     def forward(self, x, y):
@@ -173,7 +164,7 @@ class Generator(nn.Module):
 
         memory = self.encode(x, e_mask)
 
-        dec_out = self.decode(y, memory, None, e_mask, d_mask, use_cache=False)
+        dec_out, _ = self.decode(y, memory, None, e_mask, d_mask, use_cache=False)
         logit = self.generator(dec_out)
 
         self.out.logit = logit
@@ -190,9 +181,8 @@ class Generator(nn.Module):
         batch_size = x.size(0)
         max_len = self.max_len if y is None else y.size(1)
 
-        pred = torch.zeros((batch_size, max_len), dtype=torch.long)
+        pred = torch.zeros((batch_size, 1), dtype=torch.long)
         pred = pred.fill_(self.pad_id).to(self.device)
-        pred[:, 0] = self.bos_id
 
         cache=None
         e_mask = self.pad_mask(x)
@@ -201,8 +191,7 @@ class Generator(nn.Module):
         for idx in range(1, max_len):
             y = pred[:, :idx]
             d_out, cache = self.decode(y, memory, cache, e_mask, use_cache=True)
-            logit = self.generator(d_out)
-            pred_token = logit.argmax(dim=-1)[:, -1]
-            pred[:, idx] = pred_token
+            last_token = self.generator(d_out[:, -1:, :]).argmax(dim=-1)
+            pred = torch.cat([pred, last_token], dim=1)
 
         return pred

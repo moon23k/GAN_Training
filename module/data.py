@@ -23,21 +23,39 @@ class Dataset(torch.utils.data.Dataset):
 
     
     def __getitem__(self, idx):
-        src = self.tokenizer.encode(self.data[idx]['src']).ids
-        trg = self.tokenizer.encode(self.data[idx]['trg']).ids
-        return torch.LongTensor(src), torch.LongTensor(trg)
+        x = self.tokenizer.encode(self.data[idx]['x']).ids
+        y = self.tokenizer.encode(self.data[idx]['y']).ids
+        return torch.LongTensor(x), torch.LongTensor(y)
 
 
 
 class Collator(object):
-    def __init__(self, pad_id):
+    def __init__(self, pad_id, is_dis):
         self.pad_id = pad_id
+        self.is_dis = is_dis
+
 
     def __call__(self, batch):
-        src_batch, trg_batch = zip(*batch)
+        x_batch, y_batch = zip(*batch)
+
+        if not self.is_dis:
+            return {'x': self.pad_batch(x_batch), 
+                    'y': self.pad_batch(y_batch)}
         
-        return {'src': self.pad_batch(src_batch), 
-                'trg': self.pad_batch(trg_batch)}
+
+        ### collate logic for discriminator pretraining
+        batch_size = x_batch.size(0)
+
+        x_batch = torch.stack([x_batch, y_batch], dim=0)
+        x_batch = self.pad_batch(x_batch)
+
+        y_batch = torch.cat((torch.zeros(batch_size), 
+                             torch.ones(batch_size)), dim=0)
+
+        indice = torch.randperm(batch_size * 2)
+
+        return {'x': x_batch(indice), 
+                'y': y_batch(indice)}
 
 
     def pad_batch(self, batch):
@@ -49,16 +67,18 @@ class Collator(object):
 
 
 
-def load_dataloader(config, tokenizer, split):
-    is_train = (split == 'train')
-    batch_size = config.batch_size if is_train\
-                 else config.batch_size // 4
+def load_dataloader(config, tokenizer, split, shuffle):
+    pad_id = config.pad_id
+    is_dis = 'dis' in split
+    batch_size = config.batch_size // 4 \
+                 if split == 'test' \
+                 else config.batch_size 
 
     return DataLoader(
         Dataset(tokenizer, split), 
         batch_size=batch_size, 
-        shuffle=is_train,
-        collate_fn=Collator(config.pad_id),
+        shuffle=shuffle,
+        collate_fn=Collator(pad_id, is_dis),
         pin_memory=True,
         num_workers=2
     )

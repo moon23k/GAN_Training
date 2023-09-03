@@ -1,18 +1,22 @@
 import time, math, json, torch
+
 import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+
 from .trainer import TrainerBase
+from module import load_dataloader
+
 
 
 
 class GenTrainer(TrainerBase):
-    def __init__(self, config, model, train_dataloader, valid_dataloader):
+    def __init__(self, config, model, tokenizer):
         super(GenTrainer, self).__init__(config)
         
         self.model = model
-        self.train_dataloader = train_dataloader
-        self.valid_dataloader = valid_dataloader
+        self.train_dataloader = load_dataloader(config, tokenizer, 'train', shuffle=True)
+        self.valid_dataloader = load_dataloader(config, tokenizer, 'valid', shuffle=True)
 
         self.optimizer = AdamW(self.model.parameters(), lr=config.lr)
         self.scheduler = ReduceLROnPlateau(self.optimizer, 'min')
@@ -89,11 +93,10 @@ class GenTrainer(TrainerBase):
 
         for idx, batch in enumerate(self.train_dataloader):
             idx += 1
-            src = batch['src'].to(self.device)
-            trg = batch['trg'].to(self.device)
+            x, y = batch['x'].to(self.device), batch['y'].to(self.device)
 
             with torch.autocast(device_type=self.device_type, dtype=torch.float16):
-                loss = self.model(src, trg).loss                
+                loss = self.model(x, y).loss                
                 loss = loss / self.iters_to_accumulate
             
             #Backward Loss
@@ -123,11 +126,10 @@ class GenTrainer(TrainerBase):
         
         with torch.no_grad():
             for batch in self.valid_dataloader:
-                src = batch['src'].to(self.device)
-                trg = batch['trg'].to(self.device)
+                x, y = batch['x'].to(self.device), batch['y'].to(self.device)
                 
                 with torch.autocast(device_type=self.device_type, dtype=torch.float16):
-                    loss = self.model(src, trg).loss
+                    loss = self.model(x, y).loss
 
                 epoch_loss += loss.item()
         

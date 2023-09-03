@@ -82,43 +82,44 @@ def load_tokenizer(config):
 def main(args):
     set_seed(42)
     config = Config(args)    
-    generator = load_generator(config)
     tokenizer = load_tokenizer(config)
+    generator = load_generator(config)
+    discriminator = load_discriminator(config) \
+                    if 'train' in config.mode else None
+    
+
+    if config.mode == 'pretrain':
+        #PreTrain Generator
+        gen_trainer = GenTrainer(config, generator, tokenizer)
+        gen_trainer.train()
+
+        #Generate Samples to train Discriminator
+        sampler = Sampler(config, tokenizer)
+        sampler.generate_samples()
+
+        #PreTrain Discriminator 
+        dis_trainer = DisTrainer(config, discriminator, tokenizer)
+        dis_trainer.train()
+
+        return
 
 
-    if 'train' in config.mode:
-        #Common Setups for Pretraining and Training Processes
-        train_dataloader = load_dataloader(config, 'train')
-        valid_dataloader = load_dataloader(config, 'valid')        
-        discriminator = load_discriminator(config)
+    elif config.mode == 'train':
+        trainer = Trainer(config, generator, discriminator, tokenizer)
+        trainer.train()
+        return
 
-        #PreTraining Process
-        if config.mode == 'pretrain':
-            #Pretrain Generator
-            gen_trainer = GenTrainer(config, generator, train_dataloader, valid_dataloader)
-            gen_trainer.train()
 
-            #Generate Samples to pretrain Discriminator
-            sampler = Sampler(config, tokenizer, train_dataloader, valid_dataloader)
-            sampler.generate_samples()
-
-            dis_trainer = DisTrainer(config, discriminator, train_dataloader, valid_dataloader)
-            dis_trainer.train()
-
-        #Training Process
-        elif config.mode == 'train':
-            trainer = Trainer(config, generator, discriminator, train_dataloader, valid_dataloader)
-            trainer.train()
-
-    if config.mode == 'test':
-        test_dataloader = load_dataloader(config, 'test')
-        tester = Tester(config, generator, tokenizer, test_dataloader)
+    elif config.mode == 'test':
+        tester = Tester(config, generator, tokenizer)
         tester.test()
+        return
 
 
-    if config.mode == 'inference':
-        translator = Translator(config, model, tokenizer)
+    elif config.mode == 'inference':
+        translator = Translator(config, generator, tokenizer)
         translator.translate()
+        return
 
 
 

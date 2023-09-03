@@ -3,6 +3,7 @@ import torch.nn as nn
 from model import Discriminator, Generator
 
 
+
 def init_weights(model):
     for name, param in model.named_parameters():
         if 'weight' in name and 'norm' not in name:
@@ -70,12 +71,11 @@ def load_discriminator(config):
         print_model_desc(discriminator)
         return discriminator.to(config.device)
 
-    ckpt = config.g_ckpt    
+    ckpt = config.d_ckpt    
     assert os.path.exists(ckpt)
     
     model_state = torch.load(
-        config.d_base_ckpt, 
-        map_location=config.device
+        ckpt, map_location=config.device
     )['model_state_dict']        
     
     discriminator.load_state_dict(model_state)

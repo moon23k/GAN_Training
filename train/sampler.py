@@ -1,20 +1,23 @@
 import json, torch
-from module import load_generator
+from tqdm import tqdm
+from module import load_generator, load_dataloader
 
 
 
 class Sampler:
-    def __init__(self, config, tokenizer, train_dataloader, valid_dataloader):
+    def __init__(self, config, tokenizer):
         
-        config.mode = 'pretrain' #Change config.mode to get pretrained generator model
+        orig_mode = config.mode
+        config.mode = 'test'                #Change mode to get pretrained generator model
         self.model = load_generator(config)
         self.model.eval()
-        config.mode = 'train' #Revert original config.mode
+        config.mode = orig_mode             #Revert original mode
+
 
         self.tokenizer = tokenizer
-        self.train_dataloader = train_dataloader
-        self.valid_dataloader = valid_dataloader
         self.device = config.device
+        self.train_dataloader = load_dataloader(config, tokenizer, 'train', shuffle=False)
+        self.valid_dataloader = load_dataloader(config, tokenizer, 'valid', shuffle=False)
 
 
 
@@ -22,21 +25,25 @@ class Sampler:
         train_samples = self._generate(self.train_dataloader)
         valid_samples = self._generate(self.valid_dataloader)        
         
-        self.save_sample(train_samples, 'train_sample')
-        self.save_sample(train_samples, 'valid_sample')
+        self.save_sample(train_samples, 'dis_train')
+        self.save_sample(train_samples, 'dis_valid')
 
 
 
     def _generate(self, dataloader):
         samples = []
-        
-        with torch.no_grad():
-            for batch in dataloader:
-                x = batch['src'].to(self.device)
-                max_len = batch['trg'].size(1)
 
-                pred = self.model.generate(x, max_len).tolist()
-                pred = self.tokenizer.batch_decode(pred)
+        for batch in tqdm(dataloader):
+            x = batch['src'].to(self.device)
+            label = batch['trg'].tolist()
+
+            with torch.no_grad():
+                sample = self.model.generate(x).tolist()
+            
+            sample = self.tokenizer.batch_decode(sample)
+            label = self.tokenzier.batch_decode(label)
+
+            samples.append({'label': label, 'sample': sample})
 
         return samples
 
