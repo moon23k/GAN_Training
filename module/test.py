@@ -76,4 +76,4 @@ class Tester:
             if (pred == self.eos_id).sum().item() == batch_size:
                 break
 
-        return pred        
+        return pred

@@ -14,10 +14,12 @@ class Discriminator(nn.Module):
 
         self.enc_emb = Embeddings(config)
         self.encoder = Encoder(config)
+        self.dropout = nn.Dropout(config.dropout_ratio)
         self.fc_out = nn.Linear(config.hidden_dim, 1)
 
+
         self.out = namedtuple('Out', 'logit loss')
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.BCEWithLogitsLoss()
 
 
 
@@ -25,13 +27,10 @@ class Discriminator(nn.Module):
 
         x_mask = (x == self.pad_id)
         x = self.enc_emb(x)
-        x = self.encoder(x, x_mask)
+        x = self.encoder(x, x_mask)[:, 0, :]
         logit = self.fc_out(x)
 
         self.out.logit = logit
-        self.out.loss = self.criterion(
-            logit.contiguous().view(-1, self.vocab_size), 
-            y.contiguous().view(-1)
-        )
+        self.out.loss = self.criterion(logit.view(-1), y)
 
         return self.out

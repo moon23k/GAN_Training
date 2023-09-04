@@ -193,5 +193,9 @@ class Generator(nn.Module):
             d_out, cache = self.decode(y, memory, cache, e_mask, use_cache=True)
             last_token = self.generator(d_out[:, -1:, :]).argmax(dim=-1)
             pred = torch.cat([pred, last_token], dim=1)
+            
+            if (pred == self.eos_id).sum().item() == batch_size:
+                break
+
 
         return pred

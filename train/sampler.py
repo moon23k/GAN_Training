@@ -9,13 +9,15 @@ class Sampler:
         
         orig_mode = config.mode
         config.mode = 'test'                #Change mode to get pretrained generator model
-        self.model = load_generator(config)
+        model = load_generator(config)
+        self.model = torch.compile(model)
         self.model.eval()
         config.mode = orig_mode             #Revert original mode
 
-
         self.tokenizer = tokenizer
         self.device = config.device
+        self.device_type = config.device_type
+
         self.train_dataloader = load_dataloader(config, tokenizer, 'train', shuffle=False)
         self.valid_dataloader = load_dataloader(config, tokenizer, 'valid', shuffle=False)
 
@@ -29,21 +31,26 @@ class Sampler:
         self.save_sample(train_samples, 'dis_valid')
 
 
+    def tokenize(self, batch):
+        return [self.tokenizer.decode(x) for x in batch.tolist()]
+
 
     def _generate(self, dataloader):
         samples = []
 
         for batch in tqdm(dataloader):
-            x = batch['src'].to(self.device)
-            label = batch['trg'].tolist()
+            x = batch['x'].to(self.device)
+            label = batch['y']
 
             with torch.no_grad():
-                sample = self.model.generate(x).tolist()
+                with torch.autocast(device_type=self.device_type, dtype=torch.float16):
+                    sample = self.model.generate(x)
             
-            sample = self.tokenizer.batch_decode(sample)
-            label = self.tokenzier.batch_decode(label)
+            sample = self.tokenize(sample)
+            label = self.tokenize(label)
 
-            samples.append({'label': label, 'sample': sample})
+            for l, s in zip(label, sample):
+                samples.append({'x': l, 'y': s})
 
         return samples
 
