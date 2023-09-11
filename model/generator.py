@@ -119,10 +119,7 @@ class Generator(nn.Module):
         self.generator = nn.Linear(config.hidden_dim, self.vocab_size)
 
         self.out = namedtuple('Out', 'logit loss')
-        self.criterion = nn.CrossEntropyLoss(
-            ignore_index=self.pad_id, 
-            label_smoothing=0.1
-        )
+        self.criterion = nn.CrossEntropyLoss()
 
 
     @staticmethod

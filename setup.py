@@ -1,8 +1,8 @@
 import os, yaml, json
 from datasets import load_dataset
-from tokenizers.models import WordPiece
+from tokenizers.models import BPE
 from tokenizers import Tokenizer, normalizers
-from tokenizers.trainers import WordPieceTrainer
+from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import Whitespace
 from tokenizers.normalizers import NFD, Lowercase, StripAccents
 
@@ -18,7 +18,6 @@ def process_data(orig_data, volumn=101100):
     corpus, processed = [], []
     
     for elem in orig_data:
-        temp_dict = dict()
         src, trg = elem['en'].lower(), elem['de'].lower()
         src_len, trg_len = len(src), len(trg)
 
@@ -28,9 +27,7 @@ def process_data(orig_data, volumn=101100):
         dif_condition = abs(src_len - trg_len) < max_diff
 
         if max_condition & min_condition & dif_condition:
-            temp_dict['src'] = src
-            temp_dict['trg'] = trg
-            processed.append(temp_dict)
+            processed.append({'src': src, 'trg': trg})
             corpus.append(src)
             corpus.append(trg)
             
@@ -55,14 +52,14 @@ def train_tokenizer():
     with open('config.yaml', 'r') as f:
         vocab_config = yaml.load(f, Loader=yaml.FullLoader)['vocab']
 
-    tokenizer = Tokenizer(WordPiece(unk_token=vocab_config['unk_token']))
+    tokenizer = Tokenizer(BPE(unk_token=vocab_config['unk_token']))
     tokenizer.normalizer = normalizers.Sequence([NFD(), Lowercase(), StripAccents()])
     tokenizer.pre_tokenizer = Whitespace()
-    trainer = WordPieceTrainer(vocab_size=vocab_config['vocab_size'], 
-                               special_tokens=[vocab_config['pad_token'], 
-                                               vocab_config['unk_token'],
-                                               vocab_config['bos_token'],
-                                               vocab_config['eos_token']])
+    trainer = BpeTrainer(vocab_size=vocab_config['vocab_size'], 
+                         special_tokens=[vocab_config['pad_token'], 
+                                         vocab_config['unk_token'],
+                                         vocab_config['bos_token'],
+                                         vocab_config['eos_token']])
 
     tokenizer.train(files=[corpus_path], trainer=trainer)
     tokenizer.save("data/tokenizer.json")

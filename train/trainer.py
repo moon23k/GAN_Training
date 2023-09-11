@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.amp as amp
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import ReduceLROnPlateau 
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 
 
@@ -58,8 +58,8 @@ class Trainer(TrainerBase):
         self.g_optimizer = AdamW(params=self.g_model.parameters(), lr=config.lr)
         self.d_optimizer = AdamW(params=self.d_model.parameters(), lr=config.lr)
 
-        self.g_scheduler = ReduceLROnPlateau(self.g_optimizer, 'min')
-        self.d_scheduler = ReduceLROnPlateau(self.d_optimizer, 'min')
+        self.g_scheduler = ReduceLROnPlateau(self.g_optimizer, patience=2)
+        self.d_scheduler = ReduceLROnPlateau(self.d_optimizer, patience=2)
 
         self.g_ckpt = config.g_ckpt
         self.d_ckpt = config.d_ckpt
@@ -81,6 +81,21 @@ class Trainer(TrainerBase):
         print(f"""  >> Discriminator Train Loss: {record_dict['d_train_loss']:.3f} | \
               Discriminator Valid Loss: {record_dict['d_valid_loss']:.3f}\n""".replace(' ' * 14, ''))
 
+
+
+    def get_losses(self, batch):
+        x, y = batch['x'].to(self.device), batch['y'].to(self.device)
+
+        with torch.autocast(device_type=self.device_type, dtype=torch.float16):
+            g_loss = self.generator(x, y).loss
+            g_pred = self.generator.generate(x)
+            d_loss = self.discriminator(g_pred, y).loss
+
+        #Loss Accumulate
+        g_loss = g_loss / self.iters_to_accumulate
+        d_loss = d_loss / self.iters_to_accumulate
+
+        return g_loss, d_loss
 
 
 

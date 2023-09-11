@@ -5,6 +5,7 @@ from .components import Embeddings, Encoder
 
 
 
+
 class Discriminator(nn.Module):
     def __init__(self, config):
         super(Discriminator, self).__init__()
