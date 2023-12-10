@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from collections import namedtuple
-from .components import Embeddings, Encoder
+from .common import Embeddings, Encoder
 
 
 
@@ -18,20 +18,21 @@ class Discriminator(nn.Module):
         self.dropout = nn.Dropout(config.dropout_ratio)
         self.fc_out = nn.Linear(config.hidden_dim, 1)
 
-
         self.out = namedtuple('Out', 'logit loss')
         self.criterion = nn.BCEWithLogitsLoss()
 
 
 
-    def forward(self, x, y):
-
+    def forward(self, x, y=None):
         x_mask = (x == self.pad_id)
         x = self.enc_emb(x)
         x = self.encoder(x, x_mask)[:, 0, :]
-        logit = self.fc_out(x)
+        logit = self.fc_out(x).squeeze()
+
+        if y is None:
+            return logit
 
         self.out.logit = logit
-        self.out.loss = self.criterion(logit.view(-1), y)
+        self.out.loss = self.criterion(logit, y)
 
         return self.out

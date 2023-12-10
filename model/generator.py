@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from collections import namedtuple
-from .components import Embeddings, Encoder
+from .common import Embeddings, Encoder
 
 
 

@@ -34,52 +34,31 @@ def print_model_desc(model):
 
 
 
-def load_generator(config):
 
-    generator = Generator(config)
-    init_weights(generator)
-    print(f"Generator for {config.mode.upper()} has loaded")
+def load_model(config, model_type):
+    model = Generator(config) if model_type == 'gen' else Discriminator(config)
+    init_weights(model)
+    print(f"{'Generator' if model_type == 'gen' else 'Discriminator'} for {config.mode.upper()} has loaded")
 
     if config.mode == 'pretrain':
-        print_model_desc(generator)
-        return generator.to(config.device)
+        print_model_desc(model)
+        return model.to(config.device)
     
+    if model_type == 'gen':
+        ckpt = config.gen_pre_ckpt if config.mode == 'train' else config.gen_ckpt
+    else:
+        ckpt = config.dis_pre_ckpt if config.mode == 'train' else config.dis_ckpt
 
-    ckpt = config.g_ckpt
     assert os.path.exists(ckpt)
     
-    generator_state = torch.torch.load(
+    model_state = torch.torch.load(
         ckpt, map_location=config.device
     )['model_state_dict']
 
-    generator.load_state_dict(generator_state)
+    model.load_state_dict(model_state)
 
     print(f"Model States has loaded from {ckpt}")
-    print_model_desc(generator)
+    print_model_desc(model)
 
-    return generator.to(config.device)
+    return model.to(config.device)
 
-
-
-
-def load_discriminator(config):
-
-    discriminator = Discriminator(config)
-    print(f"Discriminator for {config.mode.upper()} has loaded")
-    
-    if config.mode == 'pretrain':
-        print_model_desc(discriminator)
-        return discriminator.to(config.device)
-
-    ckpt = config.d_ckpt    
-    assert os.path.exists(ckpt)
-    
-    model_state = torch.load(
-        ckpt, map_location=config.device
-    )['model_state_dict']        
-    
-    discriminator.load_state_dict(model_state)
-    print(f"Model States has loaded from {ckpt}")        
-    print_model_desc(discriminator)
-
-    return discriminator.to(config.device)

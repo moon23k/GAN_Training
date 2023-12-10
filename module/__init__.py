@@ -1,4 +1,6 @@
 from .data import load_dataloader
-from .model import load_generator, load_discriminator
+from .model import load_model
+from .train import Trainer
+from .pretrain import PreTrainer
 from .test import Tester
-from .translate import Translator
+from .inference import Inferencer

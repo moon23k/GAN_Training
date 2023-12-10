@@ -6,9 +6,9 @@ from collections import namedtuple
 
 
 
-class Translator:
+class Inferencer:
     def __init__(self, config, model, tokenizer):
-        super(Translator, self).__init__()
+        super(Inferencer, self).__init__()
         
         self.model = model
         self.device = model.device

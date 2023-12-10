@@ -5,17 +5,11 @@ from tokenizers.processors import TemplateProcessing
 
 from module import (
     load_dataloader,
-    load_generator, 
-    load_discriminator,
+    load_model,
+    PreTrainer,
+    Trainer,
     Tester,
-    Translator
-)
-
-from train import (
-    GenTrainer,
-    Sampler,
-    DisTrainer,
-    Trainer
+    Inferencer
 )
 
 
@@ -43,8 +37,10 @@ class Config(object):
             for group in params.keys():
                 for key, val in params[group].items():
                     setattr(self, key, val)
-
+        
+        self.task = args.task
         self.mode = args.mode
+        self.search_method = args.search
 
         use_cuda = torch.cuda.is_available()
         self.device_type = 'cuda' \
@@ -52,9 +48,13 @@ class Config(object):
                            else 'cpu'
         self.device = torch.device(self.device_type)
 
-        self.g_ckpt = 'ckpt/generator.pt'
-        self.d_ckpt = 'ckpt/discriminator.pt'        
-        self.tokenizer_path = 'data/tokenizer.json'
+        self.gen_ckpt = f'ckpt/{self.task}/generator.pt'
+        self.gen_pre_ckpt = f'ckpt/{self.task}/pre_gen_model.pt'
+
+        self.dis_ckpt = f'ckpt/{self.task}/discriminator.pt'
+        self.dis_pre_ckpt = f'ckpt/{self.task}/pre_dis_model.pt'
+
+        self.tokenizer_path = f'data/{self.task}/tokenizer.json'
 
 
     def print_attr(self):
@@ -81,44 +81,39 @@ def load_tokenizer(config):
 
 def main(args):
     set_seed(42)
+    mode = args.mode
     config = Config(args)    
+    
     tokenizer = load_tokenizer(config)
-    generator = load_generator(config)
-    discriminator = load_discriminator(config) \
-                    if 'train' in config.mode else None
+    generator = load_model(config, 'gen')
+    discriminator = load_model(config, 'dis')
     
 
-    if config.mode == 'pretrain':
-        #PreTrain Generator
-        gen_trainer = GenTrainer(config, generator, tokenizer)
-        gen_trainer.train()
+    if 'train' in mode:
+        train_dataloader = load_dataloader(config, tokenizer, 'train')
+        valid_dataloader = load_dataloader(config, tokenizer, 'valid')
+        
+        trainer_args = {
+            'config': config,
+            'generator': generator,
+            'discriminator': discriminator,
+            'train_dataloader': train_dataloader,
+            'valid_dataloader': valid_dataloader
+        }
 
-        #Generate Samples to train Discriminator
-        sampler = Sampler(config, tokenizer)
-        sampler.generate_samples()
-
-        #PreTrain Discriminator 
-        dis_trainer = DisTrainer(config, discriminator, tokenizer)
-        dis_trainer.train()
-
-        return
-
-
-    elif config.mode == 'train':
-        trainer = Trainer(config, generator, discriminator, tokenizer)
+        trainer = Trainer(**trainer_args) if mode == 'train' else PreTrainer(**trainer_args)
         trainer.train()
-        return
-
 
     elif config.mode == 'test':
+        test_dataloader = load_dataloader(config, tokenizer, 'test')
         tester = Tester(config, generator, tokenizer)
         tester.test()
         return
 
 
     elif config.mode == 'inference':
-        translator = Translator(config, generator, tokenizer)
-        translator.translate()
+        inferencer = Inferencer(config, generator, tokenizer)
+        inferencer()
         return
 
 
@@ -126,15 +121,17 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('-task', required=True)
     parser.add_argument('-mode', required=True)
     parser.add_argument('-search', default='greedy', required=False)
 
     args = parser.parse_args()
+    assert args.task.lower() in ['translation', 'dialogue']
     assert args.mode.lower() in ['pretrain', 'train', 'test', 'inference']
     assert args.search.lower() in ['greedy', 'beam']
 
     if args.mode != 'pretrain':
-        assert os.path.exists('ckpt/generator.pt')
-        assert os.path.exists('ckpt/discriminator.pt')
+        assert os.path.exists(f'ckpt/{args.task}/generator.pt')
+        assert os.path.exists(f'ckpt/{args.task}/discriminator.pt')
 
     main(args)
