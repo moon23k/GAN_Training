@@ -48,12 +48,12 @@ class Config(object):
                            else 'cpu'
         self.device = torch.device(self.device_type)
 
-        self.gen_ckpt = f'ckpt/{self.task}/generator.pt'
+        self.gen_ckpt = f'ckpt/{self.task}/gen_model.pt'
         self.gen_pre_ckpt = f'ckpt/{self.task}/pre_gen_model.pt'
 
-        self.dis_ckpt = f'ckpt/{self.task}/discriminator.pt'
+        self.dis_ckpt = f'ckpt/{self.task}/dis_model.pt'
         self.dis_pre_ckpt = f'ckpt/{self.task}/pre_dis_model.pt'
-
+        
         self.tokenizer_path = f'data/{self.task}/tokenizer.json'
 
 
@@ -106,7 +106,7 @@ def main(args):
 
     elif config.mode == 'test':
         test_dataloader = load_dataloader(config, tokenizer, 'test')
-        tester = Tester(config, generator, tokenizer)
+        tester = Tester(config, generator, tokenizer, test_dataloader)
         tester.test()
         return
 
@@ -130,8 +130,10 @@ if __name__ == '__main__':
     assert args.mode.lower() in ['pretrain', 'train', 'test', 'inference']
     assert args.search.lower() in ['greedy', 'beam']
 
-    if args.mode != 'pretrain':
-        assert os.path.exists(f'ckpt/{args.task}/generator.pt')
-        assert os.path.exists(f'ckpt/{args.task}/discriminator.pt')
+    if args.mode == 'train':
+        assert os.path.exists(f'ckpt/{args.task}/pre_gen_model.pt')
+        assert os.path.exists(f'ckpt/{args.task}/pre_dis_model.pt')
+    if args.mode in ['test', 'inference']:
+        assert os.path.exists(f'ckpt/{args.task}/gen_model.pt')
 
     main(args)

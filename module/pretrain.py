@@ -8,6 +8,13 @@ class PreTrainer(TrainerBase):
     def __init__(self, config, generator, discriminator, train_dataloader, valid_dataloader):
         super(PreTrainer, self).__init__(config, generator, discriminator, train_dataloader, valid_dataloader)
 
+        self.early_stop = config.early_stop
+        self.patience = config.patience
+        
+        self.device_type = config.device_type
+        self.scaler = torch.cuda.amp.GradScaler()
+        self.iters_to_accumulate = config.iters_to_accumulate
+        
         self.set_training_attrs(generator, 'pre_gen')
         self.set_training_attrs(discriminator, 'pre_dis')
 
@@ -29,8 +36,8 @@ class PreTrainer(TrainerBase):
         gpu_memory = epoch_report['gpu_memory']
         max_memory = epoch_report['gpu_max_memory']
 
-        max_len = max(len(f"{elem:.3f}") for elem in epoch_report.values)
-
+        max_len = max([len(f"{x:.3f}") if isinstance(x, (float)) else len(str(x)) for x in epoch_report.values()])
+        
         elapsed_time = epoch_report['epoch_time']
         elapsed_min = int(elapsed_time / 60)
         elapsed_sec = int(elapsed_time - (elapsed_min * 60))

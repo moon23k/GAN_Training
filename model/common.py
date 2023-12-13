@@ -61,7 +61,7 @@ class Embeddings(nn.Module):
 class Encoder(nn.Module):
     def __init__(self, config):
         super(Encoder, self).__init__()
-        
+
         layer = nn.TransformerEncoderLayer(
             d_model=config.hidden_dim,
             nhead=config.n_heads,
@@ -71,11 +71,12 @@ class Encoder(nn.Module):
             batch_first=True
         )
 
+        self.embeddings = Embeddings(config)
         self.layers = clones(layer, config.n_layers)
 
 
-    def forward(self, x, e_mask):        
+    def forward(self, x, e_mask):
+        x = self.embeddings(x)
         for layer in self.layers:
             x = layer(x, src_key_padding_mask=e_mask)
-        
         return x

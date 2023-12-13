@@ -13,7 +13,6 @@ class Discriminator(nn.Module):
         self.device = config.device
         self.pad_id = config.pad_id
 
-        self.enc_emb = Embeddings(config)
         self.encoder = Encoder(config)
         self.dropout = nn.Dropout(config.dropout_ratio)
         self.fc_out = nn.Linear(config.hidden_dim, 1)
@@ -25,7 +24,6 @@ class Discriminator(nn.Module):
 
     def forward(self, x, y=None):
         x_mask = (x == self.pad_id)
-        x = self.enc_emb(x)
         x = self.encoder(x, x_mask)[:, 0, :]
         logit = self.fc_out(x).squeeze()
 

@@ -43,11 +43,10 @@ def load_model(config, model_type):
     if config.mode == 'pretrain':
         print_model_desc(model)
         return model.to(config.device)
-    
-    if model_type == 'gen':
-        ckpt = config.gen_pre_ckpt if config.mode == 'train' else config.gen_ckpt
+    elif config.mode == 'train':
+        ckpt = config.gen_pre_ckpt if model_type == 'gen' else config.dis_pre_ckpt
     else:
-        ckpt = config.dis_pre_ckpt if config.mode == 'train' else config.dis_ckpt
+        ckpt = config.gen_ckpt if model_type == 'gen' else config.dis_ckpt        
 
     assert os.path.exists(ckpt)
     
